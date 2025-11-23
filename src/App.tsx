@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Header from './components/Header';
+import WelcomeScreen from './components/WelcomeScreen';
 import CategoryIcons from './components/CategoryIcons';
 import PromoSection from './components/PromoSection';
 import FilterTabs from './components/FilterTabs';
@@ -15,12 +16,16 @@ import CrashPage from './pages/CrashPage';
 import { mockCases, mockItems } from './data/mockData';
 import { Case, Item } from './lib/supabase';
 import { supabase } from './lib/supabase';
+import { telegramAuth, TelegramUser } from './utils/telegramAuth';
 
 type Page = 'main' | 'profile' | 'upgrade' | 'crash';
 
 const USER_ID = 'demo-user-' + Math.random().toString(36).substring(7);
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<TelegramUser | null>(null);
   const [currentPage, setCurrentPage] = useState<Page>('main');
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
@@ -31,24 +36,83 @@ function App() {
   const [balance, setBalance] = useState(0);
 
   useEffect(() => {
-    loadUserData();
+    checkAuthentication();
   }, []);
 
-  const loadUserData = async () => {
-    const savedInventory = localStorage.getItem('inventory');
-    const savedBalance = localStorage.getItem('balance');
+  const checkAuthentication = async () => {
+    setIsAuthLoading(true);
 
+    const session = telegramAuth.loadSession();
+    if (session) {
+      setIsAuthenticated(true);
+      setCurrentUser(session.user);
+      await loadUserData(session.user.id);
+    } else {
+      const user = telegramAuth.getCurrentUser();
+      if (user) {
+        await handleLogin();
+      }
+    }
+
+    setIsAuthLoading(false);
+  };
+
+  const handleLogin = async () => {
+    setIsAuthLoading(true);
+
+    const result = await telegramAuth.authenticate();
+
+    if (result.success && result.user) {
+      setIsAuthenticated(true);
+      setCurrentUser(result.user);
+      await loadUserData(result.user.id);
+    } else {
+      console.error('Login failed:', result.error);
+    }
+
+    setIsAuthLoading(false);
+  };
+
+  const loadUserData = async (userId: number) => {
+    const userIdStr = String(userId);
+
+    const savedInventory = localStorage.getItem(`inventory_${userIdStr}`);
     if (savedInventory) {
       setInventory(JSON.parse(savedInventory));
     }
-    if (savedBalance) {
-      setBalance(parseFloat(savedBalance));
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-user-balance`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ userId: userIdStr }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setBalance(data.balance || 0);
+      }
+    } catch (error) {
+      console.error('Failed to load user balance:', error);
+      const savedBalance = localStorage.getItem(`balance_${userIdStr}`);
+      if (savedBalance) {
+        setBalance(parseFloat(savedBalance));
+      }
     }
   };
 
   const saveToLocalStorage = (newInventory: Item[], newBalance: number) => {
-    localStorage.setItem('inventory', JSON.stringify(newInventory));
-    localStorage.setItem('balance', newBalance.toString());
+    if (currentUser) {
+      const userIdStr = String(currentUser.id);
+      localStorage.setItem(`inventory_${userIdStr}`, JSON.stringify(newInventory));
+      localStorage.setItem(`balance_${userIdStr}`, newBalance.toString());
+    }
   };
 
   const filteredCases = activeFilter === 'all'
@@ -157,6 +221,21 @@ function App() {
     setInventory(newInventory);
     saveToLocalStorage(newInventory, balance);
   };
+
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white text-xl">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <WelcomeScreen onLogin={handleLogin} isLoading={isAuthLoading} />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black pt-16">

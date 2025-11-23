@@ -2,6 +2,7 @@ import { X, ChevronDown, Sparkles } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { Case, Item } from '../lib/supabase';
 import { getRarityStyle } from '../utils/rarityStyles';
+import AnimatedNFT from './AnimatedNFT';
 import TonIcon from './TonIcon';
 
 interface CaseOpenModalProps {
@@ -346,11 +347,15 @@ export default function CaseOpenModal({ caseData, items, onClose, onKeepItem, on
 
             <div className={`relative inline-block p-8 rounded-3xl border-4 ${getRarityStyle(wonItem.rarity).border} ${getRarityStyle(wonItem.rarity).shadow} bg-black/40 backdrop-blur-sm animate-pulse-slow`}>
               <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shine" />
-              <img
-                src={wonItem.image_url}
-                alt={wonItem.name}
-                className="w-64 h-64 object-contain drop-shadow-2xl relative z-10 animate-float-slow"
-              />
+              <div className="w-64 h-64 relative z-10">
+                <AnimatedNFT
+                  src={wonItem.image_url}
+                  alt={wonItem.name}
+                  rarity={wonItem.rarity}
+                  autoplay={true}
+                  className="w-full h-full animate-float-slow"
+                />
+              </div>
             </div>
 
             <div className="mt-8">

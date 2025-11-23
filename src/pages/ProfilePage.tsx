@@ -1,9 +1,11 @@
-import { User, Package, TrendingUp, Copy } from 'lucide-react';
+import { User, Package, TrendingUp, Copy, Star } from 'lucide-react';
 import { useState } from 'react';
 import { Item } from '../lib/supabase';
 import { getRarityStyle } from '../utils/rarityStyles';
 import ItemActionModal from '../components/ItemActionModal';
+import AnimatedNFT from '../components/AnimatedNFT';
 import TonIcon from '../components/TonIcon';
+import { telegramAuth } from '../utils/telegramAuth';
 
 interface ProfilePageProps {
   inventory: Item[];
@@ -15,7 +17,9 @@ interface ProfilePageProps {
 export default function ProfilePage({ inventory, balance, onSellItem, onWithdrawItem }: ProfilePageProps) {
   const [selectedItem, setSelectedItem] = useState<{ item: Item; index: number } | null>(null);
   const totalItems = inventory.length;
-  const referralCode = 'NFT-GIFT-12345';
+  const currentUser = telegramAuth.getCurrentUser();
+  const userId = currentUser?.id || 0;
+  const referralCode = `NFT-${userId.toString().slice(-6).toUpperCase()}`;
 
   const handleSell = () => {
     if (selectedItem) {
@@ -38,14 +42,36 @@ export default function ProfilePage({ inventory, balance, onSellItem, onWithdraw
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black pb-24">
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="bg-gradient-to-r from-blue-600 to-cyan-500 rounded-2xl p-8 mb-8">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
-              <User size={40} className="text-white" />
+        <div className="bg-gradient-to-r from-blue-600 to-cyan-500 rounded-2xl p-8 mb-8 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
+
+          <div className="flex items-center gap-6 mb-6 relative z-10">
+            <div className="relative">
+              <img
+                src={telegramAuth.getAvatarUrl()}
+                alt={telegramAuth.getDisplayName()}
+                className="w-24 h-24 rounded-full border-4 border-white/30 shadow-xl"
+              />
+              {currentUser?.isPremium && (
+                <div className="absolute -bottom-1 -right-1 bg-yellow-500 rounded-full p-1.5 border-2 border-white">
+                  <Star size={16} className="text-white fill-white" />
+                </div>
+              )}
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-white mb-1">My Profile</h1>
-              <p className="text-white/80">Manage your NFT collection</p>
+              <h1 className="text-4xl font-bold text-white mb-1">{telegramAuth.getDisplayName()}</h1>
+              {currentUser?.username && (
+                <p className="text-white/90 text-lg mb-1">@{currentUser.username}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <p className="text-white/70">ID: {userId}</p>
+                {currentUser?.isPremium && (
+                  <span className="bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1">
+                    <Star size={12} className="fill-yellow-300" />
+                    Premium
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -128,10 +154,12 @@ export default function ProfilePage({ inventory, balance, onSellItem, onWithdraw
                     className={`${rarityStyle.bg} rounded-xl p-4 border-2 ${rarityStyle.border} ${rarityStyle.shadow} ${rarityStyle.glow} transition-all cursor-pointer group`}
                   >
                     <div className="aspect-square mb-3 rounded-lg overflow-hidden bg-black/20">
-                      <img
+                      <AnimatedNFT
                         src={item.image_url}
                         alt={item.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                        rarity={item.rarity}
+                        autoplay={true}
+                        className="w-full h-full"
                       />
                     </div>
                     <p className="text-white text-sm font-bold truncate mb-1">{item.name}</p>

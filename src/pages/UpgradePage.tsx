@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, CheckCircle2, XCircle, Sparkles } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, Sparkles } from 'lucide-react';
 import { Item } from '../lib/supabase';
 import { getRarityStyle } from '../utils/rarityStyles';
 import { getAllItems } from '../data/mockData';

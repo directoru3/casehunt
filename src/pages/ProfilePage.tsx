@@ -1,4 +1,4 @@
-import { User, Package, TrendingUp, Copy, Star } from 'lucide-react';
+import { Package, TrendingUp, Copy, Star } from 'lucide-react';
 import { useState } from 'react';
 import { Item } from '../lib/supabase';
 import { getRarityStyle } from '../utils/rarityStyles';

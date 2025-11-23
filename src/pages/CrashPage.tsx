@@ -27,7 +27,7 @@ interface CrashPageProps {
   removeItemFromInventory: (itemId: string) => void;
 }
 
-export default function CrashPage({ inventory, balance, setBalance, addItemToInventory, removeItemFromInventory }: CrashPageProps) {
+export default function CrashPage({ inventory, addItemToInventory, removeItemFromInventory }: CrashPageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<'waiting' | 'flying' | 'crashed'>('waiting');
   const [multiplier, setMultiplier] = useState(1.0);
@@ -143,7 +143,7 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
     }
   };
 
-  const endRound = async (roundId: string, finalMultiplier: number) => {
+  const endRound = async (roundId: string) => {
     try {
       await supabase
         .from('crash_rounds')
@@ -195,7 +195,7 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
 
       if (currentMultiplier >= targetCrashPoint || progress >= 1) {
         setMultiplier(targetCrashPoint);
-        endRound(roundId, targetCrashPoint);
+        endRound(roundId);
         return;
       }
 

@@ -1,4 +1,4 @@
-import { X, ChevronDown, Sparkles } from 'lucide-react';
+import { ChevronDown, Sparkles } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { Case, Item } from '../lib/supabase';
 import { getRarityStyle } from '../utils/rarityStyles';

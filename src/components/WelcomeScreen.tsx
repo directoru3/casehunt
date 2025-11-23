@@ -1,5 +1,4 @@
 import { Sparkles, Gift, Lock, TrendingUp } from 'lucide-react';
-import { useState } from 'react';
 
 interface WelcomeScreenProps {
   onLogin: () => void;

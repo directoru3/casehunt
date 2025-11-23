@@ -38,7 +38,6 @@ export default function AnimatedNFT({
 }: AnimatedNFTProps) {
   const [isPlaying, setIsPlaying] = useState(autoplay);
   const [isVideo, setIsVideo] = useState(false);
-  const [hasError, setHasError] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [animationSrc, setAnimationSrc] = useState(src);
 
@@ -64,7 +63,6 @@ export default function AnimatedNFT({
   };
 
   const handleError = () => {
-    setHasError(true);
     if (!src.match(/\.(gif)$/i)) {
       setAnimationSrc(ANIMATION_URLS.default);
     }

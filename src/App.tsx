@@ -15,12 +15,9 @@ import UpgradePage from './pages/UpgradePage';
 import CrashPage from './pages/CrashPage';
 import { mockCases, mockItems } from './data/mockData';
 import { Case, Item } from './lib/supabase';
-import { supabase } from './lib/supabase';
 import { telegramAuth, TelegramUser } from './utils/telegramAuth';
 
 type Page = 'main' | 'profile' | 'upgrade' | 'crash';
-
-const USER_ID = 'demo-user-' + Math.random().toString(36).substring(7);
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -127,7 +124,7 @@ function App() {
     saveToLocalStorage(newInventory, newBalance);
   };
 
-  const handleSellItemFromCase = (item: Item, sellPrice: number, casePrice: number) => {
+  const handleSellItemFromCase = (_item: Item, sellPrice: number, casePrice: number) => {
     const newBalance = balance - casePrice + sellPrice;
     setBalance(newBalance);
     saveToLocalStorage(inventory, newBalance);
@@ -192,7 +189,7 @@ function App() {
     saveToLocalStorage(newInventory, newBalance);
   };
 
-  const handleWithdrawItem = (item: Item, inventoryIndex: number) => {
+  const handleWithdrawItem = (_item: Item, inventoryIndex: number) => {
     const newInventory = [...inventory];
     newInventory.splice(inventoryIndex, 1);
     setInventory(newInventory);

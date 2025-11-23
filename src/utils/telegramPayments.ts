@@ -1,25 +1,3 @@
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp: {
-        ready: () => void;
-        expand: () => void;
-        close: () => void;
-        openInvoice: (url: string, callback: (status: string) => void) => void;
-        initDataUnsafe: {
-          user?: {
-            id: number;
-            first_name: string;
-            last_name?: string;
-            username?: string;
-          };
-        };
-        platform: string;
-      };
-    };
-  }
-}
-
 export interface TelegramInvoice {
   title: string;
   description: string;

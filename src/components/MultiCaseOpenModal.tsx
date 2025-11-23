@@ -1,7 +1,6 @@
 import { X, Plus, Minus, Sparkles } from 'lucide-react';
 import { useState } from 'react';
-import { Case, Item } from '../lib/supabase';
-import { getRarityStyle } from '../utils/rarityStyles';
+import { Case } from '../lib/supabase';
 import TonIcon from './TonIcon';
 
 interface MultiCaseOpenModalProps {
@@ -67,7 +66,6 @@ export default function MultiCaseOpenModal({ cases, onClose, onOpenCases, balanc
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {cases.map((caseData) => {
               const count = selections[caseData.id] || 0;
-              const rarityStyle = getRarityStyle('rare');
 
               return (
                 <div

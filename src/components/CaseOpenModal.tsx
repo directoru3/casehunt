@@ -9,17 +9,19 @@ interface CaseOpenModalProps {
   items: Item[];
   onClose: () => void;
   onKeepItem: (item: Item, casePrice: number) => void;
+  onSellItem?: (item: Item, sellPrice: number, casePrice: number) => void;
   balance?: number;
   onNavigateToCharge?: () => void;
 }
 
-export default function CaseOpenModal({ caseData, items, onClose, onKeepItem, balance = 0, onNavigateToCharge }: CaseOpenModalProps) {
+export default function CaseOpenModal({ caseData, items, onClose, onKeepItem, onSellItem, balance = 0, onNavigateToCharge }: CaseOpenModalProps) {
   const [spinning, setSpinning] = useState(false);
   const [wonItem, setWonItem] = useState<Item | null>(null);
   const [secretCode, setSecretCode] = useState('');
   const [showPrizes, setShowPrizes] = useState(true);
   const [showDecision, setShowDecision] = useState(false);
   const [showFullscreenWin, setShowFullscreenWin] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const hasEnoughBalance = balance >= caseData.price;
@@ -89,17 +91,25 @@ export default function CaseOpenModal({ caseData, items, onClose, onKeepItem, ba
   const handleKeep = () => {
     if (wonItem && showDecision) {
       onKeepItem(wonItem, caseData.price);
-      setTimeout(() => {
-        onClose();
-      }, 100);
+      setNotification('Item added to inventory!');
+      setTimeout(() => setNotification(null), 3000);
+      setWonItem(null);
+      setShowDecision(false);
+      setShowFullscreenWin(false);
     }
   };
 
   const handleSell = () => {
     if (wonItem && showDecision) {
-      setTimeout(() => {
-        onClose();
-      }, 100);
+      const sellPrice = Number((wonItem.price * 0.94).toFixed(2));
+      if (onSellItem) {
+        onSellItem(wonItem, sellPrice, caseData.price);
+      }
+      setNotification(`Sold for ${sellPrice} TON!`);
+      setTimeout(() => setNotification(null), 3000);
+      setWonItem(null);
+      setShowDecision(false);
+      setShowFullscreenWin(false);
     }
   };
 
@@ -113,6 +123,15 @@ export default function CaseOpenModal({ caseData, items, onClose, onKeepItem, ba
   return (
     <>
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        {notification && (
+          <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-[60] animate-slide-down">
+            <div className="bg-green-600 text-white px-6 py-3 rounded-lg shadow-2xl flex items-center gap-2">
+              <Sparkles size={20} />
+              <span className="font-bold">{notification}</span>
+            </div>
+          </div>
+        )}
+
         <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 relative border border-gray-800">
           <button
             onClick={() => {
@@ -391,6 +410,13 @@ export default function CaseOpenModal({ caseData, items, onClose, onKeepItem, ba
         }
         .animate-shine {
           animation: shine 3s ease-in-out infinite;
+        }
+        @keyframes slide-down {
+          0% { transform: translate(-50%, -100%); opacity: 0; }
+          100% { transform: translate(-50%, 0); opacity: 1; }
+        }
+        .animate-slide-down {
+          animation: slide-down 0.3s ease-out;
         }
       `}</style>
     </>

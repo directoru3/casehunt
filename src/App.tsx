@@ -61,6 +61,12 @@ function App() {
     saveToLocalStorage(newInventory, newBalance);
   };
 
+  const handleSellItemFromCase = (item: Item, sellPrice: number, casePrice: number) => {
+    const newBalance = balance - casePrice + sellPrice;
+    setBalance(newBalance);
+    saveToLocalStorage(inventory, newBalance);
+  };
+
   const handleMultiOpen = async (selections: { caseData: Case; count: number }[]) => {
     setShowMultiOpen(false);
 
@@ -216,6 +222,7 @@ function App() {
           items={mockItems[selectedCase.id] || []}
           onClose={() => setSelectedCase(null)}
           onKeepItem={handleKeepItem}
+          onSellItem={handleSellItemFromCase}
           balance={balance}
           onNavigateToCharge={() => {
             setSelectedCase(null);

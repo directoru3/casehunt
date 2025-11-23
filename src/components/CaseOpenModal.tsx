@@ -35,44 +35,7 @@ export default function CaseOpenModal({ caseData, items, onClose, onKeepItem, ba
 
   const [displayItems, setDisplayItems] = useState<Item[]>(generateItems());
 
-  const selectWinnerByRarity = () => {
-    const random = Math.random() * 100;
-    let cumulativeProbability = 0;
-
-    const sortedItems = [...items].sort((a, b) => {
-      const rarityOrder: { [key: string]: number } = {
-        'common': 1,
-        'uncommon': 2,
-        'rare': 3,
-        'epic': 4,
-        'legendary': 5
-      };
-      return rarityOrder[a.rarity] - rarityOrder[b.rarity];
-    });
-
-    for (const item of sortedItems) {
-      const probability = getRarityProbability(item.rarity);
-      cumulativeProbability += probability;
-      if (random <= cumulativeProbability) {
-        return item;
-      }
-    }
-
-    return sortedItems[0];
-  };
-
-  const getRarityProbability = (rarity: string): number => {
-    const probabilities: { [key: string]: number } = {
-      'common': 50,
-      'uncommon': 30,
-      'rare': 15,
-      'epic': 4,
-      'legendary': 1
-    };
-    return probabilities[rarity] || 10;
-  };
-
-  const handleSpin = () => {
+  const handleSpin = async () => {
     if (spinning || insufficientFunds) return;
 
     setSpinning(true);
@@ -81,18 +44,36 @@ export default function CaseOpenModal({ caseData, items, onClose, onKeepItem, ba
     setShowFullscreenWin(false);
     setDisplayItems(generateItems());
 
-    const winner = selectWinnerByRarity();
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/case-opener`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ items, count: 1 }),
+        }
+      );
 
-    setTimeout(() => {
-      setWonItem(winner);
-      setSpinning(false);
-      setShowFullscreenWin(true);
+      const data = await response.json();
+      const winner = data.winners[0];
 
       setTimeout(() => {
-        setShowFullscreenWin(false);
-        setShowDecision(true);
-      }, 3000);
-    }, 5000);
+        setWonItem(winner);
+        setSpinning(false);
+        setShowFullscreenWin(true);
+
+        setTimeout(() => {
+          setShowFullscreenWin(false);
+          setShowDecision(true);
+        }, 3000);
+      }, 5000);
+    } catch (error) {
+      console.error('Error opening case:', error);
+      setSpinning(false);
+    }
 
     if (scrollRef.current) {
       const itemWidth = 150;
@@ -108,13 +89,17 @@ export default function CaseOpenModal({ caseData, items, onClose, onKeepItem, ba
   const handleKeep = () => {
     if (wonItem && showDecision) {
       onKeepItem(wonItem, caseData.price);
-      onClose();
+      setTimeout(() => {
+        onClose();
+      }, 100);
     }
   };
 
   const handleSell = () => {
     if (wonItem && showDecision) {
-      onClose();
+      setTimeout(() => {
+        onClose();
+      }, 100);
     }
   };
 

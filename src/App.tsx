@@ -5,6 +5,8 @@ import PromoSection from './components/PromoSection';
 import FilterTabs from './components/FilterTabs';
 import CaseCard from './components/CaseCard';
 import CaseOpenModal from './components/CaseOpenModal';
+import MultiCaseOpenModal from './components/MultiCaseOpenModal';
+import MultiCaseResultModal from './components/MultiCaseResultModal';
 import BottomNav from './components/BottomNav';
 import ProfilePage from './pages/ProfilePage';
 import UpgradePage from './pages/UpgradePage';
@@ -21,6 +23,8 @@ function App() {
   const [currentPage, setCurrentPage] = useState<Page>('main');
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
+  const [showMultiOpen, setShowMultiOpen] = useState(false);
+  const [multiOpenResults, setMultiOpenResults] = useState<Item[] | null>(null);
   const [inventory, setInventory] = useState<Item[]>([]);
   const [balance, setBalance] = useState(0);
 
@@ -55,6 +59,49 @@ function App() {
     setInventory(newInventory);
     setBalance(newBalance);
     saveToLocalStorage(newInventory, newBalance);
+  };
+
+  const handleMultiOpen = async (selections: { caseData: Case; count: number }[]) => {
+    setShowMultiOpen(false);
+
+    const allItems: Item[] = [];
+    let totalCost = 0;
+
+    for (const selection of selections) {
+      const caseItems = mockItems[selection.caseData.id] || [];
+
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/case-opener`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({ items: caseItems, count: selection.count }),
+          }
+        );
+
+        const data = await response.json();
+        allItems.push(...data.winners);
+        totalCost += selection.caseData.price * selection.count;
+      } catch (error) {
+        console.error('Error opening cases:', error);
+      }
+    }
+
+    setBalance(balance - totalCost);
+    setMultiOpenResults(allItems);
+  };
+
+  const handleClaimAll = () => {
+    if (multiOpenResults) {
+      const newInventory = [...inventory, ...multiOpenResults];
+      setInventory(newInventory);
+      saveToLocalStorage(newInventory, balance);
+      setMultiOpenResults(null);
+    }
   };
 
   const handleSellItem = (item: Item, inventoryIndex: number) => {
@@ -113,6 +160,15 @@ function App() {
               onFilterChange={setActiveFilter}
             />
 
+            <div className="mb-6 flex justify-end">
+              <button
+                onClick={() => setShowMultiOpen(true)}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-lg hover:shadow-purple-500/50"
+              >
+                🎁 Multi-Open (Up to 5)
+              </button>
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {filteredCases.map((caseData) => (
                 <CaseCard
@@ -164,6 +220,22 @@ function App() {
           onNavigateToCharge={() => {
             setSelectedCase(null);
           }}
+        />
+      )}
+
+      {showMultiOpen && (
+        <MultiCaseOpenModal
+          cases={mockCases}
+          onClose={() => setShowMultiOpen(false)}
+          onOpenCases={handleMultiOpen}
+          balance={balance}
+        />
+      )}
+
+      {multiOpenResults && (
+        <MultiCaseResultModal
+          winners={multiOpenResults}
+          onClaimAll={handleClaimAll}
         />
       )}
     </div>

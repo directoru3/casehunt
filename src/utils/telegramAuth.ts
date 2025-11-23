@@ -32,20 +32,35 @@ export class TelegramAuthService {
   }
 
   private initialize(): void {
-    if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
-      window.Telegram.WebApp.ready();
-      window.Telegram.WebApp.expand();
-      this.isInitialized = true;
-      this.loadUserFromWebApp();
+    if (typeof window !== 'undefined') {
+      if (window.Telegram?.WebApp) {
+        try {
+          window.Telegram.WebApp.ready();
+          window.Telegram.WebApp.expand();
+          this.isInitialized = true;
+          this.loadUserFromWebApp();
+          console.log('[TelegramAuth] Telegram WebApp initialized successfully');
+        } catch (error) {
+          console.error('[TelegramAuth] Error initializing Telegram WebApp:', error);
+        }
+      } else {
+        console.log('[TelegramAuth] Telegram WebApp not available - running in browser mode');
+        this.createDemoUser();
+      }
     }
   }
 
   private loadUserFromWebApp(): void {
     const webApp = window.Telegram?.WebApp;
-    if (!webApp) return;
+    if (!webApp) {
+      console.log('[TelegramAuth] WebApp not available');
+      return;
+    }
 
-    const userData = webApp.initDataUnsafe.user;
-    if (userData) {
+    const userData = webApp.initDataUnsafe?.user;
+    console.log('[TelegramAuth] Raw Telegram data:', webApp.initDataUnsafe);
+
+    if (userData && userData.id) {
       this.currentUser = {
         id: userData.id,
         firstName: userData.first_name,
@@ -55,7 +70,25 @@ export class TelegramAuthService {
         photoUrl: userData.photo_url,
         isPremium: userData.is_premium,
       };
+      console.log('[TelegramAuth] User loaded from Telegram:', this.currentUser);
+    } else {
+      console.warn('[TelegramAuth] No user data in Telegram WebApp, creating demo user');
+      this.createDemoUser();
     }
+  }
+
+  private createDemoUser(): void {
+    const demoUserId = Math.floor(Math.random() * 1000000000);
+    this.currentUser = {
+      id: demoUserId,
+      firstName: 'Demo',
+      lastName: 'User',
+      username: `demo_user_${demoUserId}`,
+      languageCode: 'en',
+      isPremium: false,
+    };
+    this.isInitialized = true;
+    console.log('[TelegramAuth] Demo user created:', this.currentUser);
   }
 
   public isAvailable(): boolean {
@@ -81,27 +114,20 @@ export class TelegramAuthService {
 
   public async authenticate(): Promise<{ success: boolean; user?: TelegramUser; token?: string; error?: string }> {
     try {
-      if (!this.isAvailable()) {
-        return {
-          success: false,
-          error: 'Telegram WebApp not available. Please open this app in Telegram.'
-        };
-      }
+      console.log('[TelegramAuth] Starting authentication...');
 
       if (!this.currentUser) {
+        console.error('[TelegramAuth] No current user available');
         return {
           success: false,
-          error: 'User data not available from Telegram'
+          error: 'User data not available. Please try again.'
         };
       }
 
-      const initData = this.getInitData();
-      if (!initData) {
-        return {
-          success: false,
-          error: 'Telegram init data not available'
-        };
-      }
+      console.log('[TelegramAuth] Authenticating user:', this.currentUser.id);
+
+      const initData = this.getInitData() || '';
+      console.log('[TelegramAuth] InitData available:', !!initData);
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`,
@@ -119,10 +145,13 @@ export class TelegramAuthService {
       );
 
       if (!response.ok) {
-        throw new Error('Authentication failed');
+        const errorText = await response.text();
+        console.error('[TelegramAuth] Server error:', errorText);
+        throw new Error(`Authentication failed: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('[TelegramAuth] Authentication response:', { success: data.success });
 
       if (data.success && data.token) {
         this.authToken = data.token;

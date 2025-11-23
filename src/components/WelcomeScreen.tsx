@@ -1,4 +1,5 @@
-import { Sparkles, Gift, Lock, TrendingUp } from 'lucide-react';
+import { Sparkles, Gift, Lock, TrendingUp, RefreshCw } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 interface WelcomeScreenProps {
   onLogin: () => void;
@@ -6,6 +7,16 @@ interface WelcomeScreenProps {
 }
 
 export default function WelcomeScreen({ onLogin, isLoading }: WelcomeScreenProps) {
+  const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
+
+  useEffect(() => {
+    if (!autoLoginAttempted && !isLoading) {
+      console.log('[WelcomeScreen] Auto-triggering login on mount');
+      setAutoLoginAttempted(true);
+      onLogin();
+    }
+  }, [autoLoginAttempted, isLoading, onLogin]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black flex items-center justify-center p-4">
       <div className="max-w-2xl w-full">
@@ -84,6 +95,11 @@ export default function WelcomeScreen({ onLogin, isLoading }: WelcomeScreenProps
               <>
                 <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 <span>Connecting...</span>
+              </>
+            ) : autoLoginAttempted ? (
+              <>
+                <RefreshCw size={24} />
+                <span>Try Again</span>
               </>
             ) : (
               <>

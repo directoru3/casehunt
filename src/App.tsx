@@ -37,37 +37,57 @@ function App() {
   }, []);
 
   const checkAuthentication = async () => {
+    console.log('[App] Starting authentication check...');
     setIsAuthLoading(true);
 
-    const session = telegramAuth.loadSession();
-    if (session) {
-      setIsAuthenticated(true);
-      setCurrentUser(session.user);
-      await loadUserData(session.user.id);
-    } else {
-      const user = telegramAuth.getCurrentUser();
-      if (user) {
-        await handleLogin();
+    try {
+      const session = telegramAuth.loadSession();
+      if (session && session.expiresAt > Date.now()) {
+        console.log('[App] Valid session found, auto-login');
+        setIsAuthenticated(true);
+        setCurrentUser(session.user);
+        await loadUserData(session.user.id);
+        setIsAuthLoading(false);
+        return;
       }
-    }
 
-    setIsAuthLoading(false);
+      const user = telegramAuth.getCurrentUser();
+      console.log('[App] Current user from Telegram:', user);
+
+      if (user) {
+        console.log('[App] User available, attempting authentication...');
+        await handleLogin();
+      } else {
+        console.log('[App] No user available');
+        setIsAuthLoading(false);
+      }
+    } catch (error) {
+      console.error('[App] Authentication check error:', error);
+      setIsAuthLoading(false);
+    }
   };
 
   const handleLogin = async () => {
+    console.log('[App] handleLogin called');
     setIsAuthLoading(true);
 
-    const result = await telegramAuth.authenticate();
+    try {
+      const result = await telegramAuth.authenticate();
+      console.log('[App] Authentication result:', { success: result.success, hasUser: !!result.user });
 
-    if (result.success && result.user) {
-      setIsAuthenticated(true);
-      setCurrentUser(result.user);
-      await loadUserData(result.user.id);
-    } else {
-      console.error('Login failed:', result.error);
+      if (result.success && result.user) {
+        console.log('[App] Authentication successful!');
+        setIsAuthenticated(true);
+        setCurrentUser(result.user);
+        await loadUserData(result.user.id);
+      } else {
+        console.error('[App] Authentication failed:', result.error);
+      }
+    } catch (error) {
+      console.error('[App] Login error:', error);
+    } finally {
+      setIsAuthLoading(false);
     }
-
-    setIsAuthLoading(false);
   };
 
   const loadUserData = async (userId: number) => {

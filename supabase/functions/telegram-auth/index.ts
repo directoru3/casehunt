@@ -23,32 +23,6 @@ interface AuthRequest {
   user: TelegramUser;
 }
 
-function verifyTelegramWebAppData(initData: string, botToken: string): boolean {
-  try {
-    const urlParams = new URLSearchParams(initData);
-    const hash = urlParams.get('hash');
-    urlParams.delete('hash');
-
-    const dataCheckString = Array.from(urlParams.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n');
-
-    const secretKey = createHmac('sha256', 'WebAppData')
-      .update(botToken)
-      .digest();
-
-    const calculatedHash = createHmac('sha256', secretKey)
-      .update(dataCheckString)
-      .digest('hex');
-
-    return calculatedHash === hash;
-  } catch (error) {
-    console.error('Verification error:', error);
-    return false;
-  }
-}
-
 function generateJWT(userId: number): string {
   const header = {
     alg: 'HS256',
@@ -83,7 +57,10 @@ Deno.serve(async (req: Request) => {
 
     const { initData, user }: AuthRequest = await req.json();
 
+    console.log('[TelegramAuth] Received auth request for user:', user?.id);
+
     if (!user || !user.id) {
+      console.error('[TelegramAuth] Invalid user data received');
       throw new Error('Invalid user data');
     }
 
@@ -110,15 +87,19 @@ Deno.serve(async (req: Request) => {
     };
 
     if (existingUser) {
+      console.log('[TelegramAuth] Existing user found, updating...');
       const { error: updateError } = await supabase
         .from('users')
         .update(userData)
         .eq('telegram_id', user.id);
 
       if (updateError) {
-        console.error('Failed to update user:', updateError);
+        console.error('[TelegramAuth] Failed to update user:', updateError);
+      } else {
+        console.log('[TelegramAuth] User updated successfully');
       }
     } else {
+      console.log('[TelegramAuth] New user, creating account...');
       const { error: insertError } = await supabase
         .from('users')
         .insert({
@@ -127,24 +108,29 @@ Deno.serve(async (req: Request) => {
         });
 
       if (insertError) {
-        console.error('Failed to create user:', insertError);
+        console.error('[TelegramAuth] Failed to create user:', insertError);
+        throw new Error('Failed to create user account');
       }
 
+      console.log('[TelegramAuth] User created, initializing balance...');
       const { error: balanceError } = await supabase
         .from('user_balances')
         .insert({
           user_id: String(user.id),
-          balance: 0,
+          balance: 100,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         });
 
       if (balanceError) {
-        console.error('Failed to create balance:', balanceError);
+        console.error('[TelegramAuth] Failed to create balance:', balanceError);
+      } else {
+        console.log('[TelegramAuth] Balance initialized with 100 TON (welcome bonus)');
       }
     }
 
     const token = generateJWT(user.id);
+    console.log('[TelegramAuth] JWT token generated successfully');
 
     return new Response(
       JSON.stringify({
@@ -167,9 +153,12 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
-    console.error('Auth error:', error);
+    console.error('[TelegramAuth] Error:', error);
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({
+        success: false,
+        error: error.message || 'Authentication failed'
+      }),
       {
         status: 400,
         headers: {

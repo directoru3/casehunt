@@ -47,7 +47,7 @@ export class TelegramPaymentService {
     return userId ? String(userId) : null;
   }
 
-  public async createInvoice(stars: number, coins: number): Promise<{ invoice: TelegramInvoice; payloadId: string } | null> {
+  public async createInvoice(stars: number, coins: number): Promise<{ invoice: TelegramInvoice; payloadId: string; invoiceLink?: string } | null> {
     try {
       const userId = this.getUserId();
       if (!userId) {
@@ -78,28 +78,29 @@ export class TelegramPaymentService {
     }
   }
 
-  public async openInvoice(invoice: TelegramInvoice): Promise<PaymentResult> {
+  public async openInvoice(invoiceLink: string, payloadId: string): Promise<PaymentResult> {
     return new Promise((resolve) => {
       if (!this.isAvailable()) {
+        console.error('[TelegramPayments] WebApp not available');
         resolve({ status: 'failed' });
         return;
       }
 
-      // Generate bot invoice URL
-      const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'nft_gifts_bot';
-      const invoiceParams = new URLSearchParams({
-        start: 'invoice',
-        invoice: JSON.stringify(invoice)
-      });
-      const invoiceUrl = `https://t.me/${botUsername}?${invoiceParams.toString()}`;
+      console.log('[TelegramPayments] Opening invoice:', invoiceLink);
 
-      window.Telegram!.WebApp.openInvoice(invoiceUrl, (status: string) => {
-        const normalizedStatus = status.toLowerCase() as 'paid' | 'failed' | 'cancelled';
-        resolve({
-          status: normalizedStatus,
-          payloadId: invoice.payload
+      try {
+        window.Telegram!.WebApp.openInvoice(invoiceLink, (status: string) => {
+          console.log('[TelegramPayments] Payment status:', status);
+          const normalizedStatus = status.toLowerCase() as 'paid' | 'failed' | 'cancelled';
+          resolve({
+            status: normalizedStatus,
+            payloadId: payloadId
+          });
         });
-      });
+      } catch (error) {
+        console.error('[TelegramPayments] Error opening invoice:', error);
+        resolve({ status: 'failed' });
+      }
     });
   }
 
@@ -139,35 +140,45 @@ export class TelegramPaymentService {
 
   public async processPayment(stars: number, coins: number): Promise<{ success: boolean; newBalance?: number; error?: string }> {
     try {
+      console.log('[TelegramPayments] Processing payment:', stars, 'stars for', coins, 'coins');
+
       // Step 1: Create invoice
       const invoiceData = await this.createInvoice(stars, coins);
-      if (!invoiceData) {
+      if (!invoiceData || !invoiceData.invoiceLink) {
+        console.error('[TelegramPayments] Failed to create invoice');
         return { success: false, error: 'Failed to create invoice' };
       }
 
+      console.log('[TelegramPayments] Invoice created:', invoiceData.payloadId);
+
       // Step 2: Open Telegram payment interface
-      const paymentResult = await this.openInvoice(invoiceData.invoice);
+      const paymentResult = await this.openInvoice(invoiceData.invoiceLink, invoiceData.payloadId);
+      console.log('[TelegramPayments] Payment result:', paymentResult);
 
       // Step 3: Verify payment on backend
       if (paymentResult.status === 'paid') {
         const verificationResult = await this.verifyPayment(invoiceData.payloadId, 'paid');
         if (verificationResult.success) {
+          console.log('[TelegramPayments] Payment verified successfully');
           return {
             success: true,
             newBalance: verificationResult.newBalance
           };
         } else {
+          console.error('[TelegramPayments] Payment verification failed');
           return { success: false, error: 'Payment verification failed' };
         }
       } else if (paymentResult.status === 'cancelled') {
+        console.log('[TelegramPayments] Payment cancelled by user');
         await this.verifyPayment(invoiceData.payloadId, 'cancelled');
         return { success: false, error: 'Payment cancelled' };
       } else {
+        console.error('[TelegramPayments] Payment failed');
         await this.verifyPayment(invoiceData.payloadId, 'failed');
         return { success: false, error: 'Payment failed' };
       }
     } catch (error) {
-      console.error('Error processing payment:', error);
+      console.error('[TelegramPayments] Error processing payment:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }

@@ -22,9 +22,10 @@ interface CrashPageProps {
   balance: number;
   setBalance: (balance: number) => void;
   addItemToInventory: (item: Item) => void;
+  removeItemFromInventory: (itemId: string) => void;
 }
 
-export default function CrashPage({ inventory, balance, setBalance, addItemToInventory }: CrashPageProps) {
+export default function CrashPage({ inventory, balance, setBalance, addItemToInventory, removeItemFromInventory }: CrashPageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<'waiting' | 'playing' | 'crashed'>('waiting');
   const [multiplier, setMultiplier] = useState(1.0);
@@ -102,7 +103,6 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
   const createNewRound = async () => {
     try {
       const newCrashPoint = generateCrashPoint();
-      setCrashPoint(newCrashPoint);
 
       const { data, error } = await supabase
         .from('crash_rounds')
@@ -119,8 +119,8 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
       }
 
       if (data) {
-        console.log('Created new round:', data.id);
-        return data.id;
+        console.log('Created new round:', data.id, 'crash point:', newCrashPoint);
+        return { id: data.id, crashPoint: newCrashPoint };
       }
       return null;
     } catch (err) {
@@ -129,9 +129,11 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
     }
   };
 
-  const startRound = async (roundId: string) => {
+  const startRound = async (roundId: string, roundCrashPoint: number) => {
     try {
-      console.log('Starting round:', roundId);
+      console.log('Starting round:', roundId, 'with crash point:', roundCrashPoint);
+      setCrashPoint(roundCrashPoint);
+
       await supabase
         .from('crash_rounds')
         .update({ status: 'active', started_at: new Date().toISOString() })
@@ -148,7 +150,7 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
         setNextRoundItem(null);
       }
 
-      animateGraph(roundId);
+      animateGraph(roundId, roundCrashPoint);
     } catch (err) {
       console.error('Exception starting round:', err);
     }
@@ -186,12 +188,9 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
 
       setGameState('crashed');
 
-      if (myBet && myBet.status === 'pending') {
-        console.log('Player lost, returning item to inventory');
+      if (myBet && myBet.status === 'pending' && selectedItem) {
+        console.log('Player lost - item removed permanently');
         setMyBet({ ...myBet, status: 'lost' });
-        if (selectedItem) {
-          addItemToInventory(selectedItem);
-        }
       }
 
       await fetchCurrentBets(roundId);
@@ -200,7 +199,7 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
     }
   };
 
-  const animateGraph = (roundId: string) => {
+  const animateGraph = (roundId: string, targetCrashPoint: number) => {
     const startTime = Date.now();
     const duration = 15000;
 
@@ -208,11 +207,11 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
 
-      const currentMultiplier = 1 + Math.pow(progress, 2) * (crashPoint - 1);
+      const currentMultiplier = 1 + Math.pow(progress, 2) * (targetCrashPoint - 1);
 
-      if (currentMultiplier >= crashPoint || progress >= 1) {
-        setMultiplier(crashPoint);
-        endRound(roundId, crashPoint);
+      if (currentMultiplier >= targetCrashPoint || progress >= 1) {
+        setMultiplier(targetCrashPoint);
+        endRound(roundId, targetCrashPoint);
         return;
       }
 
@@ -329,6 +328,8 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
 
     console.log('Placing bet with item:', itemToUse.name, 'for round:', roundIdToUse);
 
+    removeItemFromInventory(itemToUse.id);
+
     try {
       const { data: profile } = await supabase
         .from('crash_user_profiles')
@@ -362,6 +363,7 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
 
       if (error) {
         console.error('Error creating bet:', error);
+        addItemToInventory(itemToUse);
         return;
       }
 
@@ -381,14 +383,15 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
       }
     } catch (err) {
       console.error('Exception placing bet:', err);
+      addItemToInventory(itemToUse);
     }
   };
 
   const handleCancelBet = () => {
-    if (gameState === 'waiting' && selectedItem) {
+    if (gameState === 'waiting' && selectedItem && !myBet) {
       setSelectedItem(null);
       setBetAmount(null);
-    } else if (gameState === 'playing' && nextRoundItem) {
+    } else if (gameState === 'playing' && nextRoundItem && !myNextRoundBet) {
       setNextRoundItem(null);
     }
   };
@@ -400,7 +403,7 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
     }
 
     console.log('Cashing out at', multiplier);
-    const winnings = selectedItem.price * multiplier;
+    const winnings = Number((selectedItem.price * multiplier).toFixed(2));
 
     try {
       await supabase
@@ -414,11 +417,10 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
 
       setWonAmount(winnings);
       setCashoutMultiplier(multiplier);
-      setBalance(balance + winnings);
 
       const wonItem: Item = {
         id: `won-${Date.now()}`,
-        name: `${selectedItem.name} (${multiplier.toFixed(2)}x)`,
+        name: selectedItem.name,
         image_url: selectedItem.image_url,
         rarity: selectedItem.rarity,
         price: winnings,
@@ -437,16 +439,16 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
     initializeStars();
 
     const initGame = async () => {
-      const roundId = await createNewRound();
-      if (roundId) {
-        setCurrentRoundId(roundId);
+      const roundData = await createNewRound();
+      if (roundData) {
+        setCurrentRoundId(roundData.id);
         setCountdown(10);
-        await fetchCurrentBets(roundId);
+        await fetchCurrentBets(roundData.id);
       }
 
-      const nextId = await createNewRound();
-      if (nextId) {
-        setNextRoundId(nextId);
+      const nextRoundData = await createNewRound();
+      if (nextRoundData) {
+        setNextRoundId(nextRoundData.id);
       }
     };
 
@@ -464,7 +466,17 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
         setCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(countdownInterval);
-            startRound(currentRoundId);
+
+            supabase
+              .from('crash_rounds')
+              .select('crash_multiplier')
+              .eq('id', currentRoundId)
+              .single()
+              .then(({ data }) => {
+                if (data) {
+                  startRound(currentRoundId, data.crash_multiplier);
+                }
+              });
             return 0;
           }
           return prev - 1;
@@ -484,8 +496,10 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
         setMultiplier(1.0);
 
         setCurrentRoundId(nextRoundId);
-        const newNextId = await createNewRound();
-        setNextRoundId(newNextId);
+        const newNextRoundData = await createNewRound();
+        if (newNextRoundData) {
+          setNextRoundId(newNextRoundData.id);
+        }
 
         if (nextRoundId) {
           setGameState('waiting');
@@ -605,7 +619,7 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
                       <div className="absolute inset-0 bg-red-500 blur-3xl opacity-50 animate-pulse"></div>
                       <p className="relative text-red-400 text-5xl font-bold">ОБРУШЕНИЕ!</p>
                     </div>
-                    <p className="text-white text-xl">Предмет возвращен в инвентарь</p>
+                    <p className="text-white text-xl">Предмет потерян</p>
                     <p className="text-gray-300 text-sm mt-2">На коэффициенте {crashPoint.toFixed(2)}x</p>
                   </>
                 ) : (
@@ -654,11 +668,11 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
             </h3>
             {(selectedItem || nextRoundItem) ? (
               <div className={`${getRarityStyle((nextRoundItem || selectedItem)!.rarity).bg} rounded-xl p-4 border-2 ${getRarityStyle((nextRoundItem || selectedItem)!.rarity).border} ${getRarityStyle((nextRoundItem || selectedItem)!.rarity).shadow}`}>
-                <div className="mb-3 h-24 overflow-hidden rounded-lg bg-black/20">
+                <div className="mb-3 h-32 flex items-center justify-center bg-slate-950/40 rounded-lg p-2">
                   <img
                     src={(nextRoundItem || selectedItem)!.image_url}
                     alt={(nextRoundItem || selectedItem)!.name}
-                    className="w-full h-full object-cover"
+                    className="max-h-full max-w-full object-contain drop-shadow-2xl"
                   />
                 </div>
                 <p className="text-white font-bold text-center text-sm mb-2">{(nextRoundItem || selectedItem)!.name}</p>
@@ -666,10 +680,10 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
                   {(nextRoundItem || selectedItem)!.rarity}
                 </p>
                 <div className="flex items-center justify-center gap-2 bg-black/30 rounded-lg py-2 mb-3">
-                  <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                    V
+                  <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                    <span className="text-white text-xs font-bold">V</span>
                   </div>
-                  <span className="text-white font-bold">{(nextRoundItem || selectedItem)!.price} TON</span>
+                  <span className="text-white font-bold text-lg">{(nextRoundItem || selectedItem)!.price.toFixed(2)} TON</span>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -704,30 +718,30 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
             onClick={handleCashout}
             className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-8 rounded-2xl transition-all text-2xl shadow-2xl hover:shadow-green-500/50 hover:scale-105 transform border-2 border-green-400/50 mb-8 animate-pulse"
           >
-            💰 Забрать выигрыш ({(betAmount! * multiplier).toFixed(2)} TON)
+            Забрать выигрыш ({(betAmount! * multiplier).toFixed(2)} TON)
           </button>
         )}
 
         {(currentBets.length > 0 || myBet) && (
           <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border-2 border-cyan-500/30 overflow-hidden mb-8 shadow-xl">
             <h3 className="text-white font-bold text-lg px-6 py-4 border-b border-slate-700 bg-slate-800/50">
-              👥 Ставки игроков ({currentBets.length + (myBet ? 1 : 0)})
+              Ставки игроков ({currentBets.length + (myBet ? 1 : 0)})
             </h3>
             <div className="p-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-80 overflow-y-auto">
               {myBet && (
                 <div className="bg-gradient-to-br from-cyan-600/20 to-blue-600/20 rounded-xl p-3 border-2 border-cyan-500 shadow-lg shadow-cyan-500/30">
-                  <div className="mb-2 h-12 overflow-hidden rounded-lg bg-black/20">
+                  <div className="mb-2 h-16 flex items-center justify-center bg-black/20 rounded-lg p-1">
                     <img
                       src={myBet.item_image}
                       alt={myBet.item_name}
-                      className="w-full h-full object-cover"
+                      className="max-h-full max-w-full object-contain"
                     />
                   </div>
                   <p className="text-cyan-300 text-xs font-bold mb-1">{myBet.username}</p>
                   <p className="text-white text-xs font-bold truncate mb-1">{myBet.item_name}</p>
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center text-white text-[7px] font-bold">
-                      V
+                  <div className="flex items-center gap-1 mb-1">
+                    <div className="w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center">
+                      <span className="text-white text-[7px] font-bold">V</span>
                     </div>
                     <span className="text-white text-xs font-bold">{myBet.bet_amount.toFixed(1)}</span>
                   </div>
@@ -736,8 +750,7 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
                     myBet.status === 'cashed_out' ? 'bg-green-500/20 text-green-300' :
                     'bg-red-500/20 text-red-300'
                   }`}>
-                    {myBet.status === 'pending' ? '⏳' : myBet.status === 'cashed_out' ? '✅' : '❌'}
-                    {myBet.cashout_multiplier && ` ${myBet.cashout_multiplier.toFixed(2)}x`}
+                    {myBet.status === 'pending' ? 'Ожидание' : myBet.status === 'cashed_out' ? `${myBet.cashout_multiplier?.toFixed(2)}x` : 'Потеря'}
                   </div>
                 </div>
               )}
@@ -752,18 +765,18 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
                       : 'bg-red-600/20 border-red-500'
                   }`}
                 >
-                  <div className="mb-2 h-12 overflow-hidden rounded-lg bg-black/20">
+                  <div className="mb-2 h-16 flex items-center justify-center bg-black/20 rounded-lg p-1">
                     <img
                       src={bet.item_image}
                       alt={bet.item_name}
-                      className="w-full h-full object-cover"
+                      className="max-h-full max-w-full object-contain"
                     />
                   </div>
                   <p className="text-gray-300 text-xs font-bold mb-1">{bet.username}</p>
                   <p className="text-white text-xs font-bold truncate mb-1">{bet.item_name}</p>
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center text-white text-[7px] font-bold">
-                      V
+                  <div className="flex items-center gap-1 mb-1">
+                    <div className="w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center">
+                      <span className="text-white text-[7px] font-bold">V</span>
                     </div>
                     <span className="text-white text-xs font-bold">{bet.bet_amount.toFixed(1)}</span>
                   </div>
@@ -772,8 +785,7 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
                     bet.status === 'cashed_out' ? 'bg-green-500/20 text-green-300' :
                     'bg-red-500/20 text-red-300'
                   }`}>
-                    {bet.status === 'pending' ? '⏳' : bet.status === 'cashed_out' ? '✅' : '❌'}
-                    {bet.cashout_multiplier && ` ${bet.cashout_multiplier.toFixed(2)}x`}
+                    {bet.status === 'pending' ? 'Ожидание' : bet.status === 'cashed_out' ? `${bet.cashout_multiplier?.toFixed(2)}x` : 'Потеря'}
                   </div>
                 </div>
               ))}
@@ -783,7 +795,7 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
 
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border-2 border-purple-500/30 overflow-hidden shadow-xl">
           <h3 className="text-white font-bold text-lg px-6 py-4 border-b border-slate-700 bg-slate-800/50">
-            📦 Выберите предмет для ставки
+            Выберите предмет для ставки
           </h3>
           {inventory.length === 0 ? (
             <div className="p-12 text-center">
@@ -814,19 +826,19 @@ export default function CrashPage({ inventory, balance, setBalance, addItemToInv
                         : 'opacity-50 cursor-not-allowed'
                     } ${isSelected ? 'ring-4 ring-cyan-500 scale-105' : ''}`}
                   >
-                    <div className="mb-2 h-20 overflow-hidden rounded-lg bg-black/20">
+                    <div className="mb-2 h-24 flex items-center justify-center bg-slate-950/40 rounded-lg p-2">
                       <img
                         src={item.image_url}
                         alt={item.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                        className="max-h-full max-w-full object-contain group-hover:scale-110 transition-transform drop-shadow-2xl"
                       />
                     </div>
-                    <p className="text-white text-xs font-bold truncate">{item.name}</p>
+                    <p className="text-white text-xs font-bold truncate mb-1">{item.name}</p>
                     <div className="flex items-center justify-center gap-1 mt-1">
-                      <div className="w-3 h-3 bg-white/90 rounded-full flex items-center justify-center text-slate-900 text-[8px] font-bold">
-                        V
+                      <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-[8px] font-bold">V</span>
                       </div>
-                      <span className="text-white text-xs font-bold">{item.price}</span>
+                      <span className="text-white text-xs font-bold">{item.price.toFixed(2)}</span>
                     </div>
                   </div>
                 );

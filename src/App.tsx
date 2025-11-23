@@ -92,6 +92,12 @@ function App() {
     saveToLocalStorage(newInventory, balance);
   };
 
+  const removeItemFromInventory = (itemId: string) => {
+    const newInventory = inventory.filter(item => item.id !== itemId);
+    setInventory(newInventory);
+    saveToLocalStorage(newInventory, balance);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black pt-16">
       <Header balance={balance} />
@@ -142,6 +148,7 @@ function App() {
           balance={balance}
           setBalance={setBalance}
           addItemToInventory={addItemToInventory}
+          removeItemFromInventory={removeItemFromInventory}
         />
       )}
 

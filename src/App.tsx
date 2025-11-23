@@ -86,6 +86,12 @@ function App() {
     saveToLocalStorage(newInventory, balance);
   };
 
+  const addItemToInventory = (item: Item) => {
+    const newInventory = [...inventory, item];
+    setInventory(newInventory);
+    saveToLocalStorage(newInventory, balance);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black pt-16">
       <Header balance={balance} />
@@ -135,6 +141,7 @@ function App() {
           inventory={inventory}
           balance={balance}
           setBalance={setBalance}
+          addItemToInventory={addItemToInventory}
         />
       )}
 

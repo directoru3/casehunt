@@ -15,10 +15,7 @@ interface VerifyPaymentRequest {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
@@ -27,26 +24,38 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { userId, payloadId, status }: VerifyPaymentRequest = await req.json();
+    console.log('[VerifyPayment] Request:', { userId, payloadId, status });
 
     if (!userId || !payloadId || !status) {
       throw new Error('Missing required fields');
     }
 
+    // Fetch payment
     const { data: payment, error: fetchError } = await supabase
       .from('pending_payments')
       .select('*')
       .eq('payload_id', payloadId)
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
-    if (fetchError || !payment) {
+    if (fetchError) {
+      console.error('[VerifyPayment] Fetch error:', fetchError);
+      throw new Error('Failed to fetch payment');
+    }
+
+    if (!payment) {
+      console.warn('[VerifyPayment] Payment not found:', payloadId);
       throw new Error('Payment not found');
     }
 
+    console.log('[VerifyPayment] Payment found:', payment);
+
     if (payment.status !== 'pending') {
+      console.warn('[VerifyPayment] Payment already processed:', payment.status);
       throw new Error('Payment already processed');
     }
 
+    // Update payment status
     const { error: updateError } = await supabase
       .from('pending_payments')
       .update({
@@ -56,12 +65,18 @@ Deno.serve(async (req: Request) => {
       .eq('payload_id', payloadId);
 
     if (updateError) {
+      console.error('[VerifyPayment] Update error:', updateError);
       throw new Error('Failed to update payment status');
     }
 
-    let newBalance = payment.coins_amount;
+    console.log('[VerifyPayment] Payment status updated to:', status);
 
+    let newBalance = 0;
+
+    // If payment is paid, update balance
     if (status === 'paid') {
+      console.log('[VerifyPayment] Processing paid status, adding', payment.coins_amount, 'coins');
+
       const { data: userData, error: userFetchError } = await supabase
         .from('user_balances')
         .select('balance')
@@ -69,13 +84,17 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (userFetchError && userFetchError.code !== 'PGRST116') {
+        console.error('[VerifyPayment] User fetch error:', userFetchError);
         throw new Error('Failed to fetch user balance');
       }
 
       const currentBalance = userData?.balance || 0;
       newBalance = currentBalance + payment.coins_amount;
 
+      console.log('[VerifyPayment] Current balance:', currentBalance, '→ New balance:', newBalance);
+
       if (userData) {
+        // Update existing balance
         const { error: balanceUpdateError } = await supabase
           .from('user_balances')
           .update({
@@ -85,9 +104,12 @@ Deno.serve(async (req: Request) => {
           .eq('user_id', userId);
 
         if (balanceUpdateError) {
+          console.error('[VerifyPayment] Balance update error:', balanceUpdateError);
           throw new Error('Failed to update balance');
         }
+        console.log('[VerifyPayment] Balance updated successfully');
       } else {
+        // Create new balance record
         const { error: balanceInsertError } = await supabase
           .from('user_balances')
           .insert({
@@ -98,10 +120,13 @@ Deno.serve(async (req: Request) => {
           });
 
         if (balanceInsertError) {
+          console.error('[VerifyPayment] Balance insert error:', balanceInsertError);
           throw new Error('Failed to create balance record');
         }
+        console.log('[VerifyPayment] Balance record created successfully');
       }
 
+      // Log transaction
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert({
@@ -115,33 +140,37 @@ Deno.serve(async (req: Request) => {
         });
 
       if (transactionError) {
-        console.error('Failed to log transaction:', transactionError);
+        console.warn('[VerifyPayment] Transaction log error (non-critical):', transactionError);
+      } else {
+        console.log('[VerifyPayment] Transaction logged successfully');
       }
+    } else {
+      console.log('[VerifyPayment] Payment', status, '- not processing balance');
     }
 
+    const response = {
+      success: true,
+      status,
+      newBalance: status === 'paid' ? newBalance : null,
+      message: status === 'paid' ? 'Payment successful' : `Payment ${status}`
+    };
+
+    console.log('[VerifyPayment] Response:', response);
+
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        status,
-        newBalance: status === 'paid' ? newBalance : null
-      }),
-      {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
+      JSON.stringify(response),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('Error verifying payment:', error);
+    console.error('[VerifyPayment] Error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        success: false,
+        error: error.message || 'Verification failed'
+      }),
       {
         status: 400,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }
